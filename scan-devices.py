@@ -92,6 +92,7 @@ for mac, name in watch_devices.items():
             print(json.dumps({
                 'value1': 'detecetd',
                 'value2': name,
+                'value3': now.strftime('%Y-%m-%d %H:%M:%S'),
             }, ensure_ascii=False))
     elif st['state'] == ST_ENTER:
         if mac in cur_devices:
@@ -106,6 +107,7 @@ for mac, name in watch_devices.items():
                 print(json.dumps({
                     'value1': 'lost',
                     'value2': name,
+                    'value3': st['last_seen_str'],
                 }, ensure_ascii=False))
 
 if state_changed:
