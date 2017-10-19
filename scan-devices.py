@@ -29,24 +29,23 @@ if options.help:
     print('  %s -i eth0 192.168.100.2 192.168.100.3' % prog)
     sys.exit(1)
 
-def read_devices(file='devices.txt'):
+def read_watch_devices(file='devices.txt'):
     f = open(file)
     lines = f.readlines()
     f.close
 
     devices = {}
     for line in lines:
-        r = re.compile('([0-9a-f:]+)\s+(\S.*)', re.IGNORECASE)
+        r = re.compile('([0-9a-f:]+)\s+(\S+)\s+(\S.*)', re.IGNORECASE)
         m = r.search(line)
         if m == None:
             continue
-        mac = m.group(1)
-        name = m.group(2).strip()
-        if name[0] == '"' and name[-1] == '"':
-            name = name[1:-1]
+        mac = m.group(1).strip().strip('"')
+        watching = (m.group(2).strip().strip('"').lower() == 'true')
+        name = m.group(3).strip().strip('"')
         if len(name) == 0:
             name = mac
-        devices[mac] = name
+        devices[mac] = {'name': name, 'watching': watching}
     return devices
 
 def scan_devices(interface, args):
@@ -54,19 +53,19 @@ def scan_devices(interface, args):
     output = subprocess.check_output(cmds).decode('utf-8')
     devices = {}
     for line in output.split('\n'):
-        r = re.compile('(\S+)\s+([0-9a-f:]+)\s+.*', re.IGNORECASE)
+        r = re.compile('(\S+)\s+([0-9a-f]{2}:[0-9a-f]{2}:[0-9a-f]{2}:[0-9a-f]{2}:[0-9a-f]{2}:[0-9a-f]{2})\s+.*', re.IGNORECASE)
         m = r.search(line)
         if m == None:
             continue
-        ip = m.group(1)
-        mac = m.group(2)
+        ip = m.group(1).strip()
+        mac = m.group(2).strip()
         devices[mac] = ip
     return devices
 
 
 config = configparser.ConfigParser()
 config.read('app.conf')
-watch_devices = read_devices()
+watch_devices = read_watch_devices()
 cur_devices = scan_devices(options.interface, args)
 if os.path.exists('state.json'):
     state = json.load(open('state.json'))
@@ -76,39 +75,49 @@ state_changed = False
 ST_EXIT = 'exit'
 ST_ENTER = 'enter'
 
-for mac, name in watch_devices.items():
-    tconf = config.getint('app', 'exit_seconds_after_lost_device')
+
+for mac, ip in cur_devices.items():
     if mac not in state:
-        state[mac] = {'state': ST_EXIT, 'name': name}
+        state[mac] = {'state': ST_EXIT}
+        state_changed = True
     st = state[mac]
     now = datetime.now()
-    #pp.pprint(cur_devices)
     if st['state'] == ST_EXIT:
-        if mac in cur_devices:
-            st['state'] = ST_ENTER
-            st['last_seen'] = now.timestamp()
-            st['last_seen_str'] = now.strftime('%Y-%m-%d %H:%M:%S')
-            state_changed = True
+        st['state'] = ST_ENTER
+        st['last_seen'] = now.timestamp()
+        st['last_seen_str'] = now.strftime('%Y-%m-%d %H:%M:%S')
+        state_changed = True
+        if mac not in watch_devices or watch_devices[mac]['watching']:
+            name = mac if mac not in watch_devices else watch_devices[mac]['name']
             print(json.dumps({
                 'value1': 'detecetd',
                 'value2': name,
                 'value3': now.strftime('%Y-%m-%d %H:%M:%S'),
             }, ensure_ascii=False))
     elif st['state'] == ST_ENTER:
-        if mac in cur_devices:
-            st['last_seen'] = now.timestamp()
-            st['last_seen_str'] = now.strftime('%Y-%m-%d %H:%M:%S')
-            state_changed = True
-        else:
-            dt = now.timestamp() - st['last_seen']
-            if dt >= tconf:
-                st['state'] = ST_EXIT
-                state_changed = True
-                print(json.dumps({
-                    'value1': 'lost',
-                    'value2': name,
-                    'value3': st['last_seen_str'],
-                }, ensure_ascii=False))
+        st['last_seen'] = now.timestamp()
+        st['last_seen_str'] = now.strftime('%Y-%m-%d %H:%M:%S')
+        state_changed = True
+
+tconf = config.getint('app', 'exit_seconds_after_lost_device')
+for mac, w in watch_devices.items():
+    if mac not in state:
+        continue
+    st = state[mac]
+    if w['watching'] != True or st['state'] != ST_ENTER:
+        continue
+    if mac in cur_devices:
+        continue
+    now = datetime.now()
+    dt = now.timestamp() - st['last_seen']
+    if dt >= tconf:
+        st['state'] = ST_EXIT
+        state_changed = True
+        print(json.dumps({
+            'value1': 'lost',
+            'value2': w['name'],
+            'value3': st['last_seen_str'],
+        }, ensure_ascii=False))
 
 if state_changed:
     with open('state.json', 'w') as outfile:
