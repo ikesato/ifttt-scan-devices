@@ -64,10 +64,21 @@ def scan_devices(interface, args):
         devices[mac] = ip
     return devices
 
-def needToNotify(mac):
+def need_to_notify(mac):
     if mac in watch_devices:
         return watch_devices[mac]['watching']
     return options.verbose
+
+def record_history(st, now):
+    today = now.strftime('%Y-%m-%d')
+    if 'history' not in st:
+        st['history'] = {}
+    if today not in st['history']:
+        st['history'][today] = 0
+    st['history'][today] += 1
+    for d in st['history'].keys():
+        if (now - datetime.strptime(d, '%Y-%m-%d')).days > config.getint('app', 'history_days'):
+            del st[d]
 
 
 config = configparser.ConfigParser()
@@ -91,11 +102,12 @@ for mac, ip in cur_devices.items():
     st['ip'] = ip
     state_changed = True
     now = datetime.now()
+    record_history(st, now)
     if st['state'] == ST_EXIT:
         st['state'] = ST_ENTER
         st['last_seen'] = now.timestamp()
         st['last_seen_str'] = now.strftime('%Y-%m-%d %H:%M:%S')
-        if needToNotify(mac):
+        if need_to_notify(mac):
             name = mac if mac not in watch_devices else watch_devices[mac]['name']
             print(json.dumps({
                 'value1': 'detecetd',
@@ -115,7 +127,7 @@ for mac, st in state.items():
     if dt >= tconf:
         st['state'] = ST_EXIT
         state_changed = True
-        if needToNotify(mac):
+        if need_to_notify(mac):
             name = mac if mac not in watch_devices else watch_devices[mac]['name']
             print(json.dumps({
                 'value1': 'lost',
