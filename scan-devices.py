@@ -122,6 +122,8 @@ tconf = config.getint('app', 'exit_seconds_after_lost_device')
 for mac, st in state.items():
     if mac in cur_devices:
         continue
+    if st['state'] == ST_EXIT:
+        continue
     now = datetime.now()
     dt = now.timestamp() - st['last_seen']
     if dt >= tconf:
