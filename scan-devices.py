@@ -16,6 +16,8 @@ usage = 'usage: %prog [options] IP-ADDRESS-RANGES...'
 parser = OptionParser(usage, add_help_option=False)
 parser.add_option("-i", "--interface", dest="interface",
                   help="Use network interface")
+parser.add_option('-v', '--vebose', dest='verbose', action='store_true',
+                  help='Verbose mode')
 parser.add_option('-h', '--help', dest='help', action='store_true',
                   help='show this help message and exit')
 (options, args) = parser.parse_args()
@@ -62,6 +64,11 @@ def scan_devices(interface, args):
         devices[mac] = ip
     return devices
 
+def needToNotify(mac):
+    if mac in watch_devices:
+        return watch_devices[mac]['watching']
+    return options.verbose
+
 
 config = configparser.ConfigParser()
 config.read('app.conf')
@@ -81,13 +88,14 @@ for mac, ip in cur_devices.items():
         state[mac] = {'state': ST_EXIT}
         state_changed = True
     st = state[mac]
+    st['ip'] = ip
+    state_changed = True
     now = datetime.now()
     if st['state'] == ST_EXIT:
         st['state'] = ST_ENTER
         st['last_seen'] = now.timestamp()
         st['last_seen_str'] = now.strftime('%Y-%m-%d %H:%M:%S')
-        state_changed = True
-        if mac not in watch_devices or watch_devices[mac]['watching']:
+        if needToNotify(mac):
             name = mac if mac not in watch_devices else watch_devices[mac]['name']
             print(json.dumps({
                 'value1': 'detecetd',
@@ -97,15 +105,9 @@ for mac, ip in cur_devices.items():
     elif st['state'] == ST_ENTER:
         st['last_seen'] = now.timestamp()
         st['last_seen_str'] = now.strftime('%Y-%m-%d %H:%M:%S')
-        state_changed = True
 
 tconf = config.getint('app', 'exit_seconds_after_lost_device')
-for mac, w in watch_devices.items():
-    if mac not in state:
-        continue
-    st = state[mac]
-    if w['watching'] != True or st['state'] != ST_ENTER:
-        continue
+for mac, st in state.items():
     if mac in cur_devices:
         continue
     now = datetime.now()
@@ -113,11 +115,13 @@ for mac, w in watch_devices.items():
     if dt >= tconf:
         st['state'] = ST_EXIT
         state_changed = True
-        print(json.dumps({
-            'value1': 'lost',
-            'value2': w['name'],
-            'value3': st['last_seen_str'],
-        }, ensure_ascii=False))
+        if needToNotify(mac):
+            name = mac if mac not in watch_devices else watch_devices[mac]['name']
+            print(json.dumps({
+                'value1': 'lost',
+                'value2': name,
+                'value3': st['last_seen_str'],
+            }, ensure_ascii=False))
 
 if state_changed:
     with open('state.json', 'w') as outfile:
