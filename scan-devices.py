@@ -92,6 +92,7 @@ else:
 state_changed = False
 ST_EXIT = 'exit'
 ST_ENTER = 'enter'
+ST_BEFORE_EXIT = 'before-exit'
 
 
 for mac, ip in cur_devices.items():
@@ -103,7 +104,7 @@ for mac, ip in cur_devices.items():
     state_changed = True
     now = datetime.now()
     record_history(st, now)
-    if st['state'] == ST_EXIT:
+    if st['state'] == ST_EXIT or st['state'] == ST_BEFORE_EXIT:
         st['state'] = ST_ENTER
         st['last_seen'] = now.timestamp()
         st['last_seen_str'] = now.strftime('%Y-%m-%d %H:%M:%S')
@@ -124,18 +125,22 @@ for mac, st in state.items():
         continue
     if st['state'] == ST_EXIT:
         continue
-    now = datetime.now()
-    dt = now.timestamp() - st['last_seen']
-    if dt >= tconf:
-        st['state'] = ST_EXIT
+    if st['state'] == ST_EXIT:
+        st['state'] = ST_BEFORE_EXIT
         state_changed = True
-        if need_to_notify(mac):
-            name = mac if mac not in watch_devices else watch_devices[mac]['name']
-            print(json.dumps({
-                'value1': 'lost',
-                'value2': name,
-                'value3': st['last_seen_str'],
-            }, ensure_ascii=False))
+    if st['state'] == ST_BEFORE_EXIT:
+        now = datetime.now()
+        dt = now.timestamp() - st['last_seen']
+        if dt >= tconf:
+            st['state'] = ST_EXIT
+            state_changed = True
+            if need_to_notify(mac):
+                name = mac if mac not in watch_devices else watch_devices[mac]['name']
+                print(json.dumps({
+                    'value1': 'lost',
+                    'value2': name,
+                    'value3': st['last_seen_str'],
+                }, ensure_ascii=False))
 
 if state_changed:
     with open('state.json', 'w') as outfile:
