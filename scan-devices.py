@@ -105,14 +105,14 @@ for mac, ip in cur_devices.items():
     now = datetime.now()
     record_history(st, now)
     if st['state'] == ST_EXIT or st['state'] == ST_BEFORE_EXIT:
-        st['state'] = ST_ENTER
-        if need_to_notify(mac):
+        if st['state'] == ST_EXIT and need_to_notify(mac):
             name = mac if mac not in watch_devices else watch_devices[mac]['name']
             print(json.dumps({
                 'value1': 'detecetd',
                 'value2': name,
                 'value3': now.strftime('%Y-%m-%d %H:%M:%S'),
             }, ensure_ascii=False))
+        st['state'] = ST_ENTER
     if st['state'] == ST_ENTER:
         st['last_seen'] = now.timestamp()
         st['last_seen_str'] = now.strftime('%Y-%m-%d %H:%M:%S')
