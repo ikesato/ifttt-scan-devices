@@ -101,6 +101,8 @@ for mac, ip in cur_devices.items():
         state_changed = True
     st = state[mac]
     st['ip'] = ip
+    if mac in watch_devices:
+        st['name'] = watch_devices[mac]['name']
     state_changed = True
     now = datetime.now()
     record_history(st, now)
@@ -126,6 +128,8 @@ for mac, st in state.items():
     if st['state'] == ST_ENTER:
         st['state'] = ST_BEFORE_EXIT
         state_changed = True
+    if mac in watch_devices:
+        st['name'] = watch_devices[mac]['name']
     if st['state'] == ST_BEFORE_EXIT:
         now = datetime.now()
         dt = now.timestamp() - st['last_seen']
